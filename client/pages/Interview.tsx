@@ -1,0 +1,579 @@
+import { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/utils/button";
+import {
+  Mic,
+  MicOff,
+  Play,
+  RotateCcw,
+  Volume2,
+  ArrowLeft,
+  Loader2,
+} from "lucide-react";
+import { InterviewQuestion, InterviewFeedback } from "@shared/api";
+
+const SAMPLE_QUESTIONS: InterviewQuestion[] = [
+  {
+    id: "1",
+    question: "Tell me about a time you failed and what you learned from it.",
+    category: "Resilience",
+    difficulty: "intermediate",
+  },
+  {
+    id: "2",
+    question:
+      "Describe a situation where you had to work with a difficult team member.",
+    category: "Teamwork",
+    difficulty: "intermediate",
+  },
+  {
+    id: "3",
+    question: "Tell me about your greatest professional achievement.",
+    category: "Achievement",
+    difficulty: "beginner",
+  },
+  {
+    id: "4",
+    question: "How do you handle pressure and tight deadlines?",
+    category: "Time Management",
+    difficulty: "beginner",
+  },
+  {
+    id: "5",
+    question: "Describe a project where you showed leadership.",
+    category: "Leadership",
+    difficulty: "advanced",
+  },
+];
+
+export default function Interview() {
+  const [step, setStep] = useState<"select" | "recording" | "feedback">(
+    "select",
+  );
+  const [selectedQuestion, setSelectedQuestion] =
+    useState<InterviewQuestion | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioURL, setAudioURL] = useState<string>("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [feedback, setFeedback] = useState<InterviewFeedback | null>(null);
+  const [transcription, setTranscription] = useState<string>("");
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/wav",
+        });
+        const url = URL.createObjectURL(audioBlob);
+        setAudioURL(url);
+
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Unable to access your microphone. Please check permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!audioURL || !selectedQuestion) return;
+
+    setIsAnalyzing(true);
+    try {
+      // Simulate a brief delay for analysis
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Mock transcription
+      const mockTranscription = `I remember when I was working on a critical project deadline that got compressed by 2 weeks. 
+The situation was that we had a client who wanted to launch a new feature before their annual event. 
+My task was to lead the development team to deliver the software on time despite the tight timeline. 
+What I did was reorganize our sprint schedule, identified the core features that could ship first, 
+and worked closely with the product team to deprioritize nice-to-have features. 
+I also set up daily standups to ensure we were tracking progress against the compressed timeline. 
+The result was that we shipped on time, the client was extremely satisfied, 
+and we actually had fewer bugs than our previous releases because of the focused scope.`;
+
+      setTranscription(mockTranscription);
+
+      // Mock feedback
+      const mockFeedback: InterviewFeedback = {
+        transcription: mockTranscription,
+        critique: `This is a strong STAR response that demonstrates clear communication and problem-solving skills. 
+
+Strengths:
+- You clearly identified the situation and provided context about the compressed timeline
+- You took ownership of the problem by proposing specific solutions
+- The action items were concrete and measurable (daily standups, scope prioritization)
+- The result was quantifiable and showed both speed and quality improvements
+
+Areas for improvement:
+- While clear, the response could benefit from slightly more concise delivery
+- Consider emphasizing the specific metrics or numbers (e.g., "reduced bug count by 25%")
+- Add one sentence about what you personally learned from this experience
+
+Overall, this demonstrates strong leadership and project management capabilities. The interviewer will likely follow up asking about specific technical challenges or team dynamics.`,
+        starAnalysis: {
+          situation:
+            "Client requested feature launch before annual event with 2-week deadline compression",
+          task: "Lead development team to deliver software within the new tight timeline",
+          action:
+            "Reorganized sprint schedule, identified core vs. nice-to-have features, conducted daily standups for progress tracking",
+          result:
+            "On-time delivery with satisfied client and improved code quality compared to previous releases",
+        },
+        confidenceScore: {
+          score: 8.1,
+          hesitationWords: 3,
+          hesitationDetails: ['"um" (1x)', '"like" (1x)', '"you know" (1x)'],
+          clarity: 8.5,
+        },
+        strengths: [
+          "Clear and structured response using STAR method",
+          "Demonstrates leadership and initiative",
+          "Quantifiable results and impact",
+          "Shows problem-solving approach",
+          "Good pacing and articulation",
+        ],
+        improvements: [
+          "Could be slightly more concise while maintaining detail",
+          "Include specific metrics or percentages where available",
+          "Briefly mention personal learnings from the experience",
+          "Consider emphasizing collaboration aspects more",
+        ],
+        overallRating: 8.1,
+        timestamp: new Date().toISOString(),
+      };
+
+      setFeedback(mockFeedback);
+      setStep("feedback");
+    } catch (error) {
+      console.error("Error analyzing interview:", error);
+      alert("Error analyzing your response. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleReset = () => {
+    setAudioURL("");
+    setTranscription("");
+    setFeedback(null);
+    setStep("recording");
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-white via-brand-50 to-brand-100">
+      {/* Navigation */}
+      <nav className="border-b border-brand-200/50 backdrop-blur-sm bg-white/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-4">
+          <Link to="/" className="text-brand-600 hover:text-brand-700">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <span className="text-lg font-semibold text-brand-900">
+            Interview Practice
+          </span>
+        </div>
+      </nav>
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Step 1: Select Question */}
+        {step === "select" && (
+          <div>
+            <h1 className="text-3xl font-bold text-brand-900 mb-2">
+              Choose an Interview Question
+            </h1>
+            <p className="text-gray-600 mb-8">
+              Select a difficulty level and question to practice with.
+            </p>
+
+            <div className="space-y-4">
+              {SAMPLE_QUESTIONS.map((q) => (
+                <button
+                  key={q.id}
+                  onClick={() => {
+                    setSelectedQuestion(q);
+                    setStep("recording");
+                  }}
+                  className="w-full text-left bg-white border border-brand-200 rounded-2xl p-6 hover:border-brand-400 hover:bg-brand-50 transition-all group"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-brand-600 font-medium mb-2">
+                        {q.category} •{" "}
+                        {q.difficulty.charAt(0).toUpperCase() +
+                          q.difficulty.slice(1)}
+                      </p>
+                      <p className="text-lg text-brand-900 font-semibold group-hover:text-brand-700">
+                        {q.question}
+                      </p>
+                    </div>
+                    <div className="text-brand-400 group-hover:text-brand-600">
+                      →
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Recording */}
+        {step === "recording" && selectedQuestion && (
+          <div>
+            <div className="mb-8">
+              <p className="text-sm text-brand-600 font-medium mb-2">
+                {selectedQuestion.category} •{" "}
+                {selectedQuestion.difficulty.charAt(0).toUpperCase() +
+                  selectedQuestion.difficulty.slice(1)}
+              </p>
+              <h1 className="text-3xl font-bold text-brand-900">
+                {selectedQuestion.question}
+              </h1>
+              <p className="text-gray-600 mt-4">
+                Take your time to think and speak naturally. Your response will
+                be analyzed for clarity, confidence, and adherence to the STAR
+                method.
+              </p>
+            </div>
+
+            <div className="bg-white rounded-3xl border-2 border-brand-200 p-12">
+              <div className="flex flex-col items-center justify-center">
+                {/* Recording Controls */}
+                {!audioURL && (
+                  <div className="flex flex-col items-center gap-8 w-full">
+                    <div className="text-center">
+                      <div
+                        className={`w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center ${isRecording ? "bg-red-100 animate-pulse" : "bg-brand-100"}`}
+                      >
+                        {isRecording ? (
+                          <MicOff className="w-12 h-12 text-red-600" />
+                        ) : (
+                          <Mic className="w-12 h-12 text-brand-600" />
+                        )}
+                      </div>
+                      <p className="text-gray-600 mb-2">
+                        {isRecording
+                          ? "Recording in progress..."
+                          : "Ready to record"}
+                      </p>
+                      {isRecording && (
+                        <p className="text-sm text-gray-500">
+                          Speak clearly and naturally for best results
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-4">
+                      {!isRecording ? (
+                        <Button
+                          onClick={startRecording}
+                          size="lg"
+                          className="bg-brand-600 hover:bg-brand-700 text-white gap-2"
+                        >
+                          <Mic className="w-5 h-5" />
+                          Start Recording
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={stopRecording}
+                          size="lg"
+                          className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                        >
+                          <MicOff className="w-5 h-5" />
+                          Stop Recording
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Playback and Analysis */}
+                {audioURL && (
+                  <div className="flex flex-col items-center gap-8 w-full">
+                    <div className="text-center">
+                      <p className="text-green-600 font-semibold mb-4">
+                        ✓ Recording captured!
+                      </p>
+                      <p className="text-gray-600 mb-6">
+                        Preview your answer before submitting for analysis
+                      </p>
+                    </div>
+
+                    <div className="w-full">
+                      <audio
+                        ref={audioPlaybackRef}
+                        src={audioURL}
+                        controls
+                        className="w-full mb-6"
+                      />
+                    </div>
+
+                    <div className="flex gap-4">
+                      <Button
+                        onClick={handleReset}
+                        variant="outline"
+                        size="lg"
+                        className="border-brand-300 text-brand-700 hover:bg-brand-50 gap-2"
+                      >
+                        <RotateCcw className="w-5 h-5" />
+                        Re-record
+                      </Button>
+                      <Button
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing}
+                        size="lg"
+                        className="bg-brand-600 hover:bg-brand-700 text-white gap-2"
+                      >
+                        {isAnalyzing ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-5 h-5" />
+                            Analyze & Get Feedback
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <Button
+                onClick={() => {
+                  setStep("select");
+                  setSelectedQuestion(null);
+                  setAudioURL("");
+                  setTranscription("");
+                  setFeedback(null);
+                }}
+                variant="outline"
+                className="text-brand-700 border-brand-300 hover:bg-brand-50"
+              >
+                ← Back to Questions
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Feedback */}
+        {step === "feedback" && feedback && (
+          <div>
+            <h1 className="text-3xl font-bold text-brand-900 mb-8">
+              Your Feedback
+            </h1>
+
+            {/* Confidence Score */}
+            <div className="grid md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-gray-600">Confidence Score</span>
+                  <Volume2 className="w-5 h-5 text-brand-600" />
+                </div>
+                <div className="text-4xl font-bold text-brand-600 mb-2">
+                  {feedback.confidenceScore.score.toFixed(1)}/10
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-brand-600 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${(feedback.confidenceScore.score / 10) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-gray-600">Clarity</span>
+                  <Volume2 className="w-5 h-5 text-brand-600" />
+                </div>
+                <div className="text-4xl font-bold text-brand-600 mb-2">
+                  {feedback.confidenceScore.clarity.toFixed(1)}/10
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-brand-600 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${(feedback.confidenceScore.clarity / 10) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-gray-600">Overall Rating</span>
+                  <Volume2 className="w-5 h-5 text-brand-600" />
+                </div>
+                <div className="text-4xl font-bold text-brand-600 mb-2">
+                  {feedback.overallRating.toFixed(1)}/10
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-brand-600 h-2 rounded-full transition-all"
+                    style={{ width: `${(feedback.overallRating / 10) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Transcription */}
+            <div className="bg-white rounded-2xl border border-brand-200 p-6 mb-8">
+              <h3 className="text-lg font-semibold text-brand-900 mb-4">
+                Your Transcription
+              </h3>
+              <p className="text-gray-700 leading-relaxed">{transcription}</p>
+            </div>
+
+            {/* AI Critique */}
+            <div className="bg-gradient-to-br from-brand-50 to-brand-100 rounded-2xl border border-brand-200 p-8 mb-8">
+              <h3 className="text-lg font-semibold text-brand-900 mb-4">
+                AI Critique
+              </h3>
+              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {feedback.critique}
+              </p>
+            </div>
+
+            {/* STAR Analysis */}
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <h4 className="font-semibold text-brand-900 mb-3">Situation</h4>
+                <p className="text-gray-700 text-sm">
+                  {feedback.starAnalysis.situation}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <h4 className="font-semibold text-brand-900 mb-3">Task</h4>
+                <p className="text-gray-700 text-sm">
+                  {feedback.starAnalysis.task}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <h4 className="font-semibold text-brand-900 mb-3">Action</h4>
+                <p className="text-gray-700 text-sm">
+                  {feedback.starAnalysis.action}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl border border-brand-200 p-6">
+                <h4 className="font-semibold text-brand-900 mb-3">Result</h4>
+                <p className="text-gray-700 text-sm">
+                  {feedback.starAnalysis.result}
+                </p>
+              </div>
+            </div>
+
+            {/* Strengths & Improvements */}
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div className="bg-green-50 rounded-2xl border border-green-200 p-6">
+                <h4 className="font-semibold text-green-900 mb-4">Strengths</h4>
+                <ul className="space-y-2">
+                  {feedback.strengths.map((strength, idx) => (
+                    <li key={idx} className="text-sm text-green-800 flex gap-2">
+                      <span className="text-green-600 font-bold">✓</span>
+                      {strength}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6">
+                <h4 className="font-semibold text-orange-900 mb-4">
+                  Areas to Improve
+                </h4>
+                <ul className="space-y-2">
+                  {feedback.improvements.map((improvement, idx) => (
+                    <li
+                      key={idx}
+                      className="text-sm text-orange-800 flex gap-2"
+                    >
+                      <span className="text-orange-600 font-bold">→</span>
+                      {improvement}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Hesitation Details */}
+            {feedback.confidenceScore.hesitationDetails.length > 0 && (
+              <div className="bg-white rounded-2xl border border-brand-200 p-6 mb-8">
+                <h4 className="font-semibold text-brand-900 mb-4">
+                  Hesitation Analysis (
+                  {feedback.confidenceScore.hesitationWords} detected)
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {feedback.confidenceScore.hesitationDetails.map(
+                    (word, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-orange-100 text-orange-800 text-sm rounded-full px-3 py-1"
+                      >
+                        {word}
+                      </span>
+                    ),
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <Button
+                onClick={() => {
+                  setStep("select");
+                  setSelectedQuestion(null);
+                  setAudioURL("");
+                  setTranscription("");
+                  setFeedback(null);
+                }}
+                size="lg"
+                className="bg-brand-600 hover:bg-brand-700 text-white gap-2"
+              >
+                <RotateCcw className="w-5 h-5" />
+                Try Another Question
+              </Button>
+              <Link to="/">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-brand-300 text-brand-700 hover:bg-brand-50"
+                >
+                  ← Back to Home
+                </Button>
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
