@@ -124,8 +124,8 @@ export default function Interview() {
       formData.append("question", selectedQuestion.question); // Send the question for context
 
       // 3. Send to Backend
-      // Ensure your backend is running on port 8000
-      const response = await fetch("http://localhost:8000/analyze", {
+      // Ensure your backend is running on port 8080
+      const response = await fetch("http://localhost:8080/analyze", {
         method: "POST",
         body: formData,
       });
@@ -134,7 +134,7 @@ export default function Interview() {
         throw new Error("Network response was not ok");
       }
 
-      const data: InterviewFeedback = await response.json();
+      const data: InterviewFeedback = await response.json();    
 
       // 4. Update State with Real Data
       setTranscription(data.transcription);
