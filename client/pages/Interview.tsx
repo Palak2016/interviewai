@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { InterviewQuestion, InterviewFeedback } from "@shared/api";
 
+
+const convertBlobToFile = (blob: Blob, fileName: string): File => {
+  return new File([blob], fileName, { type: blob.type });
+};
+
 const SAMPLE_QUESTIONS: InterviewQuestion[] = [
   {
     id: "1",
@@ -99,90 +104,49 @@ export default function Interview() {
     }
   };
 
+  const handleReset = () => {
+    setAudioURL("");
+    setTranscription("");
+  };
+
   const handleAnalyze = async () => {
     if (!audioURL || !selectedQuestion) return;
 
     setIsAnalyzing(true);
     try {
-      // Simulate a brief delay for analysis
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // 1. Get the raw audio blob from the refs
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+      const audioFile = convertBlobToFile(audioBlob, "interview_recording.wav");
 
-      // Mock transcription
-      const mockTranscription = `I remember when I was working on a critical project deadline that got compressed by 2 weeks. 
-The situation was that we had a client who wanted to launch a new feature before their annual event. 
-My task was to lead the development team to deliver the software on time despite the tight timeline. 
-What I did was reorganize our sprint schedule, identified the core features that could ship first, 
-and worked closely with the product team to deprioritize nice-to-have features. 
-I also set up daily standups to ensure we were tracking progress against the compressed timeline. 
-The result was that we shipped on time, the client was extremely satisfied, 
-and we actually had fewer bugs than our previous releases because of the focused scope.`;
+      // 2. Prepare the Form Data
+      const formData = new FormData();
+      formData.append("file", audioFile); // 'file' must match the backend parameter name
+      formData.append("question", selectedQuestion.question); // Send the question for context
 
-      setTranscription(mockTranscription);
+      // 3. Send to Backend
+      // Ensure your backend is running on port 8000
+      const response = await fetch("http://localhost:8000/analyze", {
+        method: "POST",
+        body: formData,
+      });
 
-      // Mock feedback
-      const mockFeedback: InterviewFeedback = {
-        transcription: mockTranscription,
-        critique: `This is a strong STAR response that demonstrates clear communication and problem-solving skills. 
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
 
-Strengths:
-- You clearly identified the situation and provided context about the compressed timeline
-- You took ownership of the problem by proposing specific solutions
-- The action items were concrete and measurable (daily standups, scope prioritization)
-- The result was quantifiable and showed both speed and quality improvements
+      const data: InterviewFeedback = await response.json();
 
-Areas for improvement:
-- While clear, the response could benefit from slightly more concise delivery
-- Consider emphasizing the specific metrics or numbers (e.g., "reduced bug count by 25%")
-- Add one sentence about what you personally learned from this experience
-
-Overall, this demonstrates strong leadership and project management capabilities. The interviewer will likely follow up asking about specific technical challenges or team dynamics.`,
-        starAnalysis: {
-          situation:
-            "Client requested feature launch before annual event with 2-week deadline compression",
-          task: "Lead development team to deliver software within the new tight timeline",
-          action:
-            "Reorganized sprint schedule, identified core vs. nice-to-have features, conducted daily standups for progress tracking",
-          result:
-            "On-time delivery with satisfied client and improved code quality compared to previous releases",
-        },
-        confidenceScore: {
-          score: 8.1,
-          hesitationWords: 3,
-          hesitationDetails: ['"um" (1x)', '"like" (1x)', '"you know" (1x)'],
-          clarity: 8.5,
-        },
-        strengths: [
-          "Clear and structured response using STAR method",
-          "Demonstrates leadership and initiative",
-          "Quantifiable results and impact",
-          "Shows problem-solving approach",
-          "Good pacing and articulation",
-        ],
-        improvements: [
-          "Could be slightly more concise while maintaining detail",
-          "Include specific metrics or percentages where available",
-          "Briefly mention personal learnings from the experience",
-          "Consider emphasizing collaboration aspects more",
-        ],
-        overallRating: 8.1,
-        timestamp: new Date().toISOString(),
-      };
-
-      setFeedback(mockFeedback);
+      // 4. Update State with Real Data
+      setTranscription(data.transcription);
+      setFeedback(data);
       setStep("feedback");
+
     } catch (error) {
       console.error("Error analyzing interview:", error);
-      alert("Error analyzing your response. Please try again.");
+      alert("Error analyzing your response. Is the backend server running?");
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const handleReset = () => {
-    setAudioURL("");
-    setTranscription("");
-    setFeedback(null);
-    setStep("recording");
   };
 
   return (
