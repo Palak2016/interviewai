@@ -11,7 +11,7 @@ import google.generativeai as genai
 import sqlite3
 
 #configure a setup
-GOOGLE_API_KEY="AIzaSyDZrgWRSoiC99xg5Lpmv0Mu8S9ma5i8scc"
+GOOGLE_API_KEY="AIzaSyAyiewR-zNy2DFo3bicS8xDy6EPBkj1dL8"
 genai.configure(api_key=GOOGLE_API_KEY)    #to call genai are authorised
 
 app = FastAPI()   #refer to app later to define our URLs
@@ -79,66 +79,76 @@ def analyze_audio_with_gemini(audio_path: str, question: str):
     """
     Sends audio to Gemini 1.5 Flash for analysis.
     """
+    print(f"DEBUG: Processing {audio_path}...") # Debug print
+
+    # ... (Keep your existing file upload code here) ...
+    video_file = genai.upload_file(path=audio_path)
+    
+    # Wait for processing
+    import time
+    while video_file.state.name == "PROCESSING":
+        time.sleep(1)
+        video_file = genai.get_file(video_file.name)
+
+    if video_file.state.name == "FAILED":
+        raise ValueError("Audio processing failed")
+
+    model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+    
+    # ... (Keep your existing prompt here) ...
+    # REPLACE THIS BLOCK IN main.py
+    prompt = f"""
+    You are an expert HR Interview Coach. The user has answered the interview question: "{question}".
+
+    Task:
+    1. Transcribe the audio verbatim.
+    2. Analyze the answer using the STAR method (Situation, Task, Action, Result).
+    3. Identify hesitation words (um, uh, like) and count them.
+    4. Provide constructive feedback.
+
+    Output strictly valid JSON with this structure:
+    {{
+        "transcription": "text...",
+        "critique": "general feedback paragraph...",
+        "starAnalysis": {{
+            "situation": "...",
+            "task": "...",
+            "action": "...",
+            "result": "..."
+        }},
+        "confidenceScore": {{
+            "score": 8.5, 
+            "hesitationWords": 3,
+            "hesitationDetails": ["um", "like"],
+            "clarity": 9.0
+        }},
+        "strengths": ["point 1", "point 2"],
+        "improvements": ["point 1", "point 2"],
+        "overallRating": 8.5
+    }}
+    """
+
+    # Generate content
+    response = model.generate_content([video_file, prompt], generation_config={"response_mime_type": "application/json"})
+    
+    # --- THE FIX STARTS HERE ---
+    json_str = response.text
+    
+    # Clean up markdown backticks if Gemini adds them
+    if json_str.startswith("```json"):
+        json_str = json_str.replace("```json", "").replace("```", "")
+    elif json_str.startswith("```"):
+        json_str = json_str.replace("```", "")
+        
+    print(f"DEBUG: Raw AI Response: {json_str[:100]}...") # Print first 100 chars to debug
+    
     try:
-        # Upload the audio file to Google's servers temporarily
-        video_file = genai.upload_file(path=audio_path)
-        
-        # Wait for processing (usually instant for audio)
-        import time
-        while video_file.state.name == "PROCESSING":
-            time.sleep(1)
-            video_file = genai.get_file(video_file.name)
-
-        if video_file.state.name == "FAILED":
-            raise ValueError("Audio processing failed")
-
-        # The System Prompt
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-        
-        prompt = f"""
-        You are an expert HR Interview Coach. The user has answered the interview question: "{question}".
-        
-        Task:
-        1. Transcribe the audio verbatim.
-        2. Analyze the answer using the STAR method (Situation, Task, Action, Result).
-        3. Identify hesitation words (um, uh, like) and count them.
-        4. Provide constructive feedback.
-        
-        Output strictly valid JSON with this structure:
-        {{
-            "transcription": "text...",
-            "critique": "general feedback paragraph...",
-            "starAnalysis": {{
-                "situation": "...",
-                "task": "...",
-                "action": "...",
-                "result": "..."
-            }},
-            "confidenceScore": {{
-                "score": 8.5, 
-                "hesitationWords": 3,
-                "hesitationDetails": ["um", "like"],
-                "clarity": 9.0
-            }},
-            "strengths": ["point 1", "point 2"],
-            "improvements": ["point 1", "point 2"],
-            "overallRating": 8.5
-        }}
-        """
-
-        # Generate content
-        response = model.generate_content([video_file, prompt], generation_config={"response_mime_type": "application/json"})
-        
-        # Clean up the JSON string
-        json_str = response.text
         return json.loads(json_str)
-
-    except Exception as e:
-        print(f"AI Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-        
-
-
+    except json.JSONDecodeError:
+        print("CRITICAL ERROR: AI did not return valid JSON.")
+        print("Full bad response:", json_str)
+        raise ValueError("AI response could not be parsed.")
+    # --- THE FIX ENDS HERE ---
 
 
 @app.get("/")
@@ -157,10 +167,14 @@ async def analyze_interview(
     """
     Main endpoint: Receives Audio File + Question -> Returns Analysis
     """
+    print(f"DEBUG: Received file: {file.filename}, question: {question}")
+    
     # Save the uploaded file temporarily
     temp_filename = f"temp_{file.filename}"
     with open(temp_filename, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    
+    print(f"DEBUG: Saved temp file: {temp_filename}")
     
     try:
         # Call AI
@@ -189,15 +203,19 @@ async def analyze_interview(
         conn.commit()
         conn.close()
 
+        print("DEBUG: Successfully processed and saved to DB")
         return ai_result
 
     except Exception as e:
-        print("Error:", e)
-        raise HTTPException(status_code=500, detail="Analysis failed")
+        print(f"ERROR: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
         # Cleanup temp file
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+            print(f"DEBUG: Cleaned up temp file: {temp_filename}")
 
 @app.get("/history")
 def get_history():
