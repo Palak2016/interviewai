@@ -9,54 +9,21 @@ import {
   Volume2,
   ArrowLeft,
   Loader2,
+  ChevronRight
 } from "lucide-react";
 import { InterviewQuestion, InterviewFeedback } from "@shared/api";
-
+import { INTERVIEW_CATEGORIES, Category } from "../data/questions"; // Make sure path is correct
 
 const convertBlobToFile = (blob: Blob, fileName: string): File => {
   return new File([blob], fileName, { type: blob.type });
 };
 
-const SAMPLE_QUESTIONS: InterviewQuestion[] = [
-  {
-    id: "1",
-    question: "Tell me about a time you failed and what you learned from it.",
-    category: "Resilience",
-    difficulty: "intermediate",
-  },
-  {
-    id: "2",
-    question:
-      "Describe a situation where you had to work with a difficult team member.",
-    category: "Teamwork",
-    difficulty: "intermediate",
-  },
-  {
-    id: "3",
-    question: "Tell me about your greatest professional achievement.",
-    category: "Achievement",
-    difficulty: "beginner",
-  },
-  {
-    id: "4",
-    question: "How do you handle pressure and tight deadlines?",
-    category: "Time Management",
-    difficulty: "beginner",
-  },
-  {
-    id: "5",
-    question: "Describe a project where you showed leadership.",
-    category: "Leadership",
-    difficulty: "advanced",
-  },
-];
-
 export default function Interview() {
-  const [step, setStep] = useState<"select" | "recording" | "feedback">(
-    "select",
-  );
-  const [selectedQuestion, setSelectedQuestion] =
-    useState<InterviewQuestion | null>(null);
+  // Added "category" to the step type
+  const [step, setStep] = useState<"category" | "select" | "recording" | "feedback">("category");
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<InterviewQuestion | null>(null);
+  
   const [isRecording, setIsRecording] = useState(false);
   const [audioURL, setAudioURL] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -114,38 +81,32 @@ export default function Interview() {
 
     setIsAnalyzing(true);
     try {
-      // Convert audio URL blob back to file
       const response = await fetch(audioURL);
       const audioBlob = await response.blob();
       const audioFile = new File([audioBlob], "interview_recording.wav", { type: "audio/wav" });
 
-      // Prepare the Form Data
       const formData = new FormData();
       formData.append("file", audioFile);
       formData.append("question", selectedQuestion.question);
 
-      // Send to Backend
       const analysisResponse = await fetch("http://localhost:8000/analyze", {
         method: "POST",
         body: formData,
       });
 
       if (!analysisResponse.ok) {
-        const errorData = await analysisResponse.json().catch(() => ({}));
-        console.error("Backend error:", errorData);
-        throw new Error(`Analysis failed: ${analysisResponse.status} ${analysisResponse.statusText}`);
+        throw new Error(`Analysis failed: ${analysisResponse.statusText}`);
       }
 
       const data: InterviewFeedback = await analysisResponse.json();
 
-      // Update State with Real Data
       setTranscription(data.transcription);
       setFeedback(data);
       setStep("feedback");
 
     } catch (error) {
       console.error("Error analyzing interview:", error);
-      alert(`Error analyzing your response: ${error instanceof Error ? error.message : "Unknown error"}. Is the backend server running?`);
+      alert("Error analyzing your response. Is the backend server running?");
     } finally {
       setIsAnalyzing(false);
     }
@@ -160,24 +121,75 @@ export default function Interview() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <span className="text-lg font-semibold text-brand-900">
-            Interview Practice
+            {step === 'category' ? 'Select Category' : 
+             step === 'select' ? selectedCategory?.title : 
+             'Interview Practice'}
           </span>
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Step 1: Select Question */}
-        {step === "select" && (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        {/* Step 0: Category Selection */}
+        {step === "category" && (
           <div>
-            <h1 className="text-3xl font-bold text-brand-900 mb-2">
-              Choose an Interview Question
+             <h1 className="text-3xl font-bold text-brand-900 mb-2">
+              Choose a Topic
             </h1>
             <p className="text-gray-600 mb-8">
-              Select a difficulty level and question to practice with.
+              Select a programming language or computer science concept to practice.
+            </p>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {INTERVIEW_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat);
+                    setStep("select");
+                  }}
+                  className="bg-white border border-brand-200 rounded-2xl p-6 hover:border-brand-400 hover:shadow-md transition-all text-left group flex flex-col h-full"
+                >
+                  <div className="mb-4 w-12 h-12 rounded-lg bg-brand-50 flex items-center justify-center group-hover:bg-brand-100 transition-colors">
+                    <cat.icon className="w-6 h-6 text-brand-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-brand-900 mb-2">{cat.title}</h3>
+                  <p className="text-sm text-gray-600 mb-4 flex-grow">{cat.description}</p>
+                  <div className="flex items-center text-brand-600 font-medium text-sm mt-auto">
+                    View 25 Questions <ChevronRight className="w-4 h-4 ml-1" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Select Question */}
+        {step === "select" && selectedCategory && (
+          <div>
+            <div className="flex items-center gap-2 mb-6">
+              <Button 
+                variant="ghost" 
+                onClick={() => {
+                  setStep("category");
+                  setSelectedCategory(null);
+                }}
+                className="text-gray-500 hover:text-brand-600 -ml-4"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Categories
+              </Button>
+            </div>
+
+            <h1 className="text-3xl font-bold text-brand-900 mb-2">
+              {selectedCategory.title} Questions
+            </h1>
+            <p className="text-gray-600 mb-8">
+              Select a question to practice your {selectedCategory.title} skills.
             </p>
 
-            <div className="space-y-4">
-              {SAMPLE_QUESTIONS.map((q) => (
+            <div className="grid gap-4">
+              {selectedCategory.questions.map((q) => (
                 <button
                   key={q.id}
                   onClick={() => {
@@ -188,17 +200,19 @@ export default function Interview() {
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm text-brand-600 font-medium mb-2">
-                        {q.category} •{" "}
-                        {q.difficulty.charAt(0).toUpperCase() +
-                          q.difficulty.slice(1)}
-                      </p>
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-2 ${
+                        q.difficulty === 'beginner' ? 'bg-green-100 text-green-700' :
+                        q.difficulty === 'intermediate' ? 'bg-blue-100 text-blue-700' :
+                        'bg-purple-100 text-purple-700'
+                      }`}>
+                        {q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1)}
+                      </span>
                       <p className="text-lg text-brand-900 font-semibold group-hover:text-brand-700">
                         {q.question}
                       </p>
                     </div>
-                    <div className="text-brand-400 group-hover:text-brand-600">
-                      →
+                    <div className="text-brand-400 group-hover:text-brand-600 self-center">
+                      <ChevronRight className="w-6 h-6" />
                     </div>
                   </div>
                 </button>
@@ -210,6 +224,17 @@ export default function Interview() {
         {/* Step 2: Recording */}
         {step === "recording" && selectedQuestion && (
           <div>
+             <div className="flex items-center gap-2 mb-6">
+              <Button 
+                variant="ghost" 
+                onClick={() => setStep("select")}
+                className="text-gray-500 hover:text-brand-600 -ml-4"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to {selectedCategory?.title}
+              </Button>
+            </div>
+
             <div className="mb-8">
               <p className="text-sm text-brand-600 font-medium mb-2">
                 {selectedQuestion.category} •{" "}
@@ -330,22 +355,6 @@ export default function Interview() {
                   </div>
                 )}
               </div>
-            </div>
-
-            <div className="mt-8">
-              <Button
-                onClick={() => {
-                  setStep("select");
-                  setSelectedQuestion(null);
-                  setAudioURL("");
-                  setTranscription("");
-                  setFeedback(null);
-                }}
-                variant="outline"
-                className="text-brand-700 border-brand-300 hover:bg-brand-50"
-              >
-                ← Back to Questions
-              </Button>
             </div>
           </div>
         )}
@@ -515,8 +524,7 @@ export default function Interview() {
             <div className="flex gap-4">
               <Button
                 onClick={() => {
-                  setStep("select");
-                  setSelectedQuestion(null);
+                  setStep("select"); // Go back to question selection
                   setAudioURL("");
                   setTranscription("");
                   setFeedback(null);
@@ -527,15 +535,21 @@ export default function Interview() {
                 <RotateCcw className="w-5 h-5" />
                 Try Another Question
               </Button>
-              <Link to="/">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-brand-300 text-brand-700 hover:bg-brand-50"
-                >
-                  ← Back to Home
-                </Button>
-              </Link>
+              <Button
+                onClick={() => {
+                    setStep("category"); // Go back to main menu
+                    setSelectedQuestion(null);
+                    setSelectedCategory(null);
+                    setAudioURL("");
+                    setTranscription("");
+                    setFeedback(null);
+                }}
+                size="lg"
+                variant="outline"
+                className="border-brand-300 text-brand-700 hover:bg-brand-50"
+              >
+                ← Main Menu
+              </Button>
             </div>
           </div>
         )}

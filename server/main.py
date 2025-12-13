@@ -10,6 +10,8 @@ from pydantic import BaseModel   #validate data in api
 import google.generativeai as genai
 import sqlite3
 
+# uvicorn main:app --reload --port 8000   
+
 #configure a setup
 from dotenv import load_dotenv
 import os
@@ -142,22 +144,68 @@ def analyze_audio_with_gemini(audio_path: str, question: str):
     response = model.generate_content([video_file, prompt], generation_config={"response_mime_type": "application/json"})
     
     # --- THE FIX STARTS HERE ---
-    json_str = response.text
-    
-    # Clean up markdown backticks if Gemini adds them
+    # Try multiple ways to extract text from the SDK response so we don't
+    # depend on a single attribute name (different SDK versions/outputs
+    # may structure the object differently).
+    json_str = None
+
+    # 1) Direct text attribute
+    if hasattr(response, "text") and isinstance(response.text, str):
+        json_str = response.text
+
+    # 2) Some SDKs return `candidates` list with `content` or `text`
+    if not json_str and hasattr(response, "candidates"):
+        try:
+            cand = response.candidates[0]
+            if isinstance(cand, dict):
+                json_str = cand.get("content") or cand.get("text")
+            else:
+                # Candidate might be an object with .content
+                json_str = getattr(cand, "content", None) or getattr(cand, "text", None)
+        except Exception:
+            json_str = None
+
+    # 3) Some SDKs place results under `output` or `response` fields
+    if not json_str and hasattr(response, "output"):
+        try:
+            # output can be a list of blocks
+            out = response.output
+            if isinstance(out, list) and len(out) > 0:
+                first = out[0]
+                if isinstance(first, dict):
+                    json_str = first.get("content") or first.get("text")
+                else:
+                    json_str = getattr(first, "content", None) or getattr(first, "text", None)
+        except Exception:
+            json_str = None
+
+    # 4) Fallback: stringify the whole response object
+    if not json_str:
+        try:
+            json_str = str(response)
+        except Exception:
+            json_str = None
+
+    if not json_str:
+        print("CRITICAL ERROR: Unable to extract text from AI response.\nResponse repr:", repr(response))
+        raise ValueError("AI response did not contain text content.")
+
+    # Clean up markdown code fences if Gemini adds them
+    json_str = json_str.strip()
     if json_str.startswith("```json"):
-        json_str = json_str.replace("```json", "").replace("```", "")
+        json_str = json_str.replace("```json", "").replace("```", "").strip()
     elif json_str.startswith("```"):
-        json_str = json_str.replace("```", "")
-        
-    print(f"DEBUG: Raw AI Response: {json_str[:100]}...") # Print first 100 chars to debug
-    
+        json_str = json_str.replace("```", "").strip()
+
+    print(f"DEBUG: Raw AI Response (truncated): {json_str[:200]}...")
+
     try:
         return json.loads(json_str)
     except json.JSONDecodeError:
         print("CRITICAL ERROR: AI did not return valid JSON.")
-        print("Full bad response:", json_str)
-        raise ValueError("AI response could not be parsed.")
+        print("Full bad response repr:", repr(response))
+        print("Attempted JSON string:\n", json_str)
+        raise ValueError("AI response could not be parsed as JSON.")
     # --- THE FIX ENDS HERE ---
 
 
